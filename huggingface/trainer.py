@@ -1,28 +1,22 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import gc
+import math
 import os
 import torch
 from transformers import Trainer, TrainingArguments,DataCollatorForLanguageModeling
-from transformers import GPT2Config, GPT2LMHeadModel
+from transformers import GPT2Config, GPT2LMHeadModel, EvalPrediction
 import wandb
 from utils import AsciiTokenizer, DynamicEvalCallback, preprocess_and_cache_dataset, save_prior_version, save_tokenizer_model
 import numpy as np
 
-# Define the evaluation function
-def compute_metrics(eval_pred):
-    print("Entered compute metrics")
-    logits, labels = eval_pred
-    predictions = np.argmax(logits, axis=-1)
-    loss = np.mean((predictions - labels) ** 2)  # Example loss computation
-    return {"eval_loss": loss}
 
 def train(dataset, tokenizer, model,
             rundir="runs",
             logging_dir="./logs",
             num_epochs=1,
-            per_device_batch_size=32,
-            gradient_accumulation_steps=1,
+            per_device_batch_size=8,
+            gradient_accumulation_steps=4,
             fp16=True,
             name="{repr(model)}_{config.dataset_name}",
             project='newmodel',
@@ -47,13 +41,14 @@ def train(dataset, tokenizer, model,
         save_steps=1000,
         fp16=fp16,
         dataloader_num_workers=4,  # Adjust as needed
-        eval_strategy="steps",  # Set evaluation strategy to steps
-        eval_steps=eval_steps, 
+        eval_strategy="no",  # Set evaluation strategy to steps
+        # eval_steps=eval_steps, 
         report_to=['wandb'],
         remove_unused_columns=False,
-        metric_for_best_model = "eval_loss",
-        load_best_model_at_end=True,
+        #metric_for_best_model = "eval_loss",
+        #load_best_model_at_end=True,
         save_total_limit=2,
+        # prediction_loss_only=True
     )
 
     print(f"{training_args}")
@@ -97,8 +92,8 @@ def train(dataset, tokenizer, model,
         train_dataset=dataset["train"],  # Access the 'train' split
         eval_dataset=dataset["validation"],  # Access the 'validation' split
         data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
-        callbacks=[DynamicEvalCallback()],
-        compute_metrics=compute_metrics,  
+        #callbacks=[DynamicEvalCallback()],
+        # compute_metrics=compute_metrics,  
     )
 
     # Start training
@@ -112,9 +107,9 @@ def train(dataset, tokenizer, model,
 
 def run_experiment(n_layer, n_embd, n_head):
     print(f'run experiment {n_layer=},{n_embd=},{n_head=}')
-    max_length=1024
+    max_length=512
     tokenizer=AsciiTokenizer()
-    dataset = preprocess_and_cache_dataset("roneneldan/TinyStories",tokenizer)
+    dataset = preprocess_and_cache_dataset("roneneldan/TinyStories",tokenizer,max_length=max_length,reload=True)
 
     config = GPT2Config(vocab_size=tokenizer.vocab_size,
                         n_embd=n_embd,
@@ -131,7 +126,7 @@ def run_experiment(n_layer, n_embd, n_head):
     model = torch.nn.DataParallel(model)
 
     print(f" train {n_layer=},{n_embd=},{n_head=}")
-    train(dataset,tokenizer,model,per_device_batch_size=128,max_length=1024)
+    train(dataset,tokenizer,model,per_device_batch_size=128,max_length=max_length)
     
     del model
     gc.collect()
