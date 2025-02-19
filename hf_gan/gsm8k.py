@@ -1,3 +1,4 @@
+import argparse
 from vllm import LLM, SamplingParams
 from tqdm import tqdm
 import json
@@ -116,11 +117,15 @@ def evaluate_gsm8k(model_name, temperature=0.0, max_tokens=512,split='test',disa
     return results
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluate GSM8K model")
+    parser.add_argument("--model", type=str, default="gpt2_8_512_tspre", help="Name of the model to evaluate")
+    parser.add_argument("--dir", type=str, default="out", help="Directory prefix for the model name")
+    args = parser.parse_args()
 
-# Example usage:
-results = evaluate_gsm8k("out/gpt2_8_512_tspre")
+    model_path = f"{args.dir}/{args.model}"
+    results = evaluate_gsm8k(model_path)
 
-
-# Save results to JSON:
-with open("gsm8k_results.json", "w") as f:
-    json.dump(results, f, indent=4) # indent for readability
+    # Save results to JSON
+    with open("{args.dir}/gsm8k_{args.model_results}.json", "w") as f:
+        json.dump(results, f, indent=4)  # indent for readability
