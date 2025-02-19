@@ -1,4 +1,5 @@
 import logging
+import os
 import torch
 from torch.utils.data import Dataset 
 from transformers import GPT2Tokenizer, GPT2Config, GPT2LMHeadModel, TrainingArguments, Trainer 
@@ -44,12 +45,10 @@ class TinyStoriesDataset(Dataset):
         #chunk = chunks[np.random.randint(0, len(chunks))] 
         chunk = chunks[0]
 
-        # # Create attention mask 
-        # attention_mask = [1] * len(chunk) 
         # Convert to tensor 
         input_ids = torch.tensor(chunk) 
-        #attention_mask = torch.tensor(attention_mask) 
-        return { "input_ids": input_ids} #, "attention_mask": attention_mask }
+ 
+        return { "input_ids": input_ids} 
     
 def train_model(mname,tokenizer,model,train_dataset):  
     logging.basicConfig(level=logging.DEBUG)
@@ -65,10 +64,11 @@ def train_model(mname,tokenizer,model,train_dataset):
     training_args = TrainingArguments( 
         output_dir="./out",
         overwrite_output_dir=True, 
-        num_train_epochs=3, 
-        per_device_train_batch_size=8, 
+        num_train_epochs=1, 
+        gradient_accumulation_steps=6,
+        per_device_train_batch_size=4, 
         #per_device_eval_batch_size=4, 
-        eval_steps=1000, 
+        #eval_steps=1000, 
         save_steps=1000, 
         warmup_steps=500, 
         learning_rate=5e-5, 
@@ -80,7 +80,7 @@ def train_model(mname,tokenizer,model,train_dataset):
         eval_strategy="no", 
         save_total_limit=2, 
         #load_best_model_at_end=True, 
-        report_to="none", # "wandb",
+        report_to="wandb",# "none", 
         remove_unused_columns=False,
         dataloader_num_workers=2,
         torch_compile=True,
@@ -88,16 +88,22 @@ def train_model(mname,tokenizer,model,train_dataset):
 
     # # Wrap the model with DataParallel
     if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
+        model = torch.nn.DataParallel(model,device_ids=[0])
 
     model.to('cuda')
 
-   
+    # Save training arguments to a JSON file
+    os.makedirs(f"./out/{mname}", exist_ok=True)
+    with open(f"./out/{mname}/training_args.json", "w") as f:
+        f.write(training_args.to_json_string())
+    try:
+        with open(f"./out/{mname}/model_config.json", "w") as f:
+            f.write(model.module.config.to_json_string()) 
+    except AttributeError as e:
+        print(f"Ignoring Error saving model config: {e}")
+
     trainer = Trainer(model=model, args=training_args, data_collator=data_collator, 
                         train_dataset=train_dataset)
-    
-    
-    #, eval_dataset=eval_dataset )
      
     # Train the model 
     trainer.train() 
@@ -106,20 +112,19 @@ def train_model(mname,tokenizer,model,train_dataset):
     trainer.save_model(f"./out/{mname}-final") 
     tokenizer.save_pretrained(f"./out/{mname}-final")
 
+
 if __name__ == "__main__": 
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2') 
     config = GPT2Config(
         vocab_size=50257,  # Adjust as needed (default is 50257)
         n_positions=1024,   # Adjust sequence length (default is 1024)
-        n_embd=512,       # Adjust embedding dimension (default is 768)
-        n_layer=8,       # Adjust number of layers (default is 12)
-        n_head=8,        # Adjust number of attention heads (default is 12)
-        # ... other config parameters you want to customize ...
-        # Example:
+        n_embd=768,       # Adjust embedding dimension (default is 768)
+        n_layer=12,       # Adjust number of layers (default is 12)
+        n_head=12,        # Adjust number of attention heads (default is 12)
+
         attn_pdrop=0.1,    # Attention dropout
         resid_pdrop=0.1,   # Residual dropout
-        # ... and many more!  Refer to the GPT2Config documentation
-        #     for the full list of configurable parameters.
+
     )
 
     model = GPT2LMHeadModel(config=config)
@@ -127,6 +132,5 @@ if __name__ == "__main__":
     print(model.config)
     print(f"Number of parameters: {model.num_parameters()}")
 
-    train_dataset=TinyStoriesDataset(tokenizer,split="train",nrecs=40000)
-    #eval_dataset=TinyStoriesDataset(tokenizer,split="validation")
-    train_model("gpt2_8_512",tokenizer,model,train_dataset)
+    train_dataset=TinyStoriesDataset(tokenizer,split="train",nrecs=1200000)#40000)
+    train_model("gpt2_12_768_tspre",tokenizer,model,train_dataset)
