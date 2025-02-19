@@ -18,7 +18,15 @@ gemm_impl: Literal["bf16", "fp8"] = "bf16"
 attn_impl: Literal["naive", "absorb"] = "absorb"
 
 @dataclass
-class ModelArgs(PretrainedConfig):
+class DeepSeekConfig(PretrainedConfig):
+    model_type = "DeepSeek"
+    keys_to_ignore_at_inference = ["past_key_values"]
+    attribute_map = {
+        "hidden_size": "n_embd",
+        "max_position_embeddings": "n_positions",
+        "num_attention_heads": "n_head",
+        "num_hidden_layers": "n_layer",
+    }
     """
     Data class for defining model arguments and hyperparameters.
 
@@ -52,39 +60,124 @@ class ModelArgs(PretrainedConfig):
         beta_slow (int): Slow beta correction factor.
         mscale (float): Scaling factor for extended attention.
     """
-    def __init__(self, vocab_size, dim, n_layers, max_seq_len, dtype, **kwargs):
-        super().__init__(**kwargs)
-        max_batch_size: int = 8
-        max_seq_len: int = 512 # 4096 * 4
-        dtype: Literal["bf16", "fp8"] = "bf16"
-        vocab_size: int = 12800 # 102400
-        dim: int = 256 # 2048
-        inter_dim: int = 1368 # 10944
-        moe_inter_dim: int = 176 # 1408
-        n_layers: int = 16 # 27
-        n_dense_layers: int = 1
-        n_heads: int = 8 # 16
+    def __init__(self,
+        max_batch_size: int = 8,
+        max_seq_len: int = 512, # 4096 * 4
+        dtype: Literal["bf16", "fp8"] = "bf16",
+        vocab_size: int = 12800, # 102400
+        dim: int = 256, # 2048
+        inter_dim: int = 1368, # 10944
+        moe_inter_dim: int = 176, # 1408
+        n_layers: int = 16, # 27
+        n_dense_layers: int = 1,
+        n_heads: int = 8, # 16
         # moe
-        n_routed_experts: int = 8 # 64
-        n_shared_experts: int = 2
-        n_activated_experts: int = 2 # 6
-        n_expert_groups: int = 1
-        n_limited_groups: int = 1
-        score_func: Literal["softmax", "sigmoid"] = "softmax"
-        route_scale: float = 1.
+        n_routed_experts: int = 8, # 64
+        n_shared_experts: int = 2,
+        n_activated_experts: int = 2, # 6
+        n_expert_groups: int = 1,
+        n_limited_groups: int = 1,
+        score_func: Literal["softmax", "sigmoid"] = "softmax",
+        route_scale: float = 1.,
         # mla
-        q_lora_rank: int = 0
-        kv_lora_rank: int = 512
-        qk_nope_head_dim: int = 32 # 128
-        qk_rope_head_dim: int = 32 # 64
-        v_head_dim: int = 32 # 128
+        q_lora_rank: int = 0,
+        kv_lora_rank: int = 512,
+        qk_nope_head_dim: int = 32, # 128
+        qk_rope_head_dim: int = 32, # 64
+        v_head_dim: int = 32, # 128
         # yarn
-        original_seq_len: int = 4096
-        rope_theta: float = 10000.0
-        rope_factor: float = 40
-        beta_fast: int = 32
-        beta_slow: int = 1
-        mscale: float = 1.
+        original_seq_len: int = 4096,
+        rope_theta: float = 10000.0,
+        rope_factor: float = 40,
+        beta_fast: int = 32,
+        beta_slow: int = 1,
+        mscale: float = 1.,
+        bos_token_id=50256,
+        eos_token_id=50256,
+        **kwargs):
+
+
+    # def __init__(
+    #     self,
+    #     vocab_size=50257,
+    #     n_positions=1024,
+    #     n_embd=768,
+    #     n_layer=12,
+    #     n_head=12,
+    #     n_inner=None,
+    #     activation_function="gelu_new",
+    #     resid_pdrop=0.1,
+    #     embd_pdrop=0.1,
+    #     attn_pdrop=0.1,
+    #     layer_norm_epsilon=1e-5,
+    #     initializer_range=0.02,
+    #     summary_type="cls_index",
+    #     summary_use_proj=True,
+    #     summary_activation=None,
+    #     summary_proj_to_labels=True,
+    #     summary_first_dropout=0.1,
+    #     scale_attn_weights=True,
+    #     use_cache=True,
+    #     bos_token_id=50256,
+    #     eos_token_id=50256,
+    #     scale_attn_by_inverse_layer_idx=False,
+    #     reorder_and_upcast_attn=False,
+    #     **kwargs,
+    # ):
+    #     self.vocab_size = vocab_size
+    #     self.n_positions = n_positions
+    #     self.n_embd = n_embd
+    #     self.n_layer = n_layer
+    #     self.n_head = n_head
+    #     self.n_inner = n_inner
+    #     self.activation_function = activation_function
+    #     self.resid_pdrop = resid_pdrop
+    #     self.embd_pdrop = embd_pdrop
+    #     self.attn_pdrop = attn_pdrop
+    #     self.layer_norm_epsilon = layer_norm_epsilon
+    #     self.initializer_range = initializer_range
+    #     self.summary_type = summary_type
+    #     self.summary_use_proj = summary_use_proj
+    #     self.summary_activation = summary_activation
+    #     self.summary_first_dropout = summary_first_dropout
+    #     self.summary_proj_to_labels = summary_proj_to_labels
+    #     self.scale_attn_weights = scale_attn_weights
+    #     self.use_cache = use_cache
+    #     self.scale_attn_by_inverse_layer_idx = scale_attn_by_inverse_layer_idx
+    #     self.reorder_and_upcast_attn = reorder_and_upcast_attn
+        self.max_batch_size = max_batch_size
+        self.max_seq_len = max_seq_len
+        self.dtype = dtype
+        self.vocab_size = vocab_size
+        self.dim = dim
+        self.inter_dim = inter_dim
+        self.moe_inter_dim = moe_inter_dim
+        self.n_layers = n_layers
+        self.n_dense_layers = n_dense_layers
+        self.n_heads = n_heads
+        self.n_routed_experts = n_routed_experts
+        self.n_shared_experts = n_shared_experts
+        self.n_activated_experts = n_activated_experts
+        self.n_expert_groups = n_expert_groups
+        self.n_limited_groups = n_limited_groups
+        self.score_func = score_func
+        self.route_scale = route_scale
+        self.q_lora_rank = q_lora_rank
+        self.kv_lora_rank = kv_lora_rank
+        self.qk_nope_head_dim = qk_nope_head_dim
+        self.qk_rope_head_dim = qk_rope_head_dim
+        self.v_head_dim = v_head_dim
+        self.original_seq_len = original_seq_len
+        self.rope_theta = rope_theta
+        self.rope_factor = rope_factor
+        self.beta_fast = beta_fast
+        self.beta_slow = beta_slow
+        self.mscale = mscale
+        self.bos_token_id = bos_token_id
+        self.eos_token_id = eos_token_id
+
+        super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
+
 
 
 class ParallelEmbedding(nn.Module):
@@ -294,7 +387,7 @@ class RMSNorm(nn.Module):
         return F.rms_norm(x, (self.dim,), self.weight, self.eps)
 
 
-def precompute_freqs_cis(args: ModelArgs) -> torch.Tensor:
+def precompute_freqs_cis(args: DeepSeekConfig) -> torch.Tensor:
     """
     Precomputes frequency-based complex exponential values for rotary positional embeddings.
 
@@ -409,7 +502,7 @@ class MLA(nn.Module):
         v_head_dim (int): Dimensionality of value projections.
         softmax_scale (float): Scaling factor for softmax in attention computation.
     """
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: DeepSeekConfig):
         super().__init__()
         self.dim = args.dim
         self.n_heads = args.n_heads
@@ -546,7 +639,7 @@ class Gate(nn.Module):
         weight (torch.nn.Parameter): Learnable weights for the gate.
         bias (Optional[torch.nn.Parameter]): Optional bias term for the gate.
     """
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: DeepSeekConfig):
         """
         Initializes the Gate module.
 
@@ -646,7 +739,7 @@ class MoE(nn.Module):
         experts (nn.ModuleList): List of expert modules.
         shared_experts (nn.Module): Shared experts applied to all inputs.
     """
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: DeepSeekConfig):
         """
         Initializes the MoE module.
 
@@ -703,7 +796,7 @@ class Block(nn.Module):
         attn_norm (nn.Module): Layer normalization for attention.
         ffn_norm (nn.Module): Layer normalization for feed-forward network.
     """
-    def __init__(self, layer_id: int, args: ModelArgs):
+    def __init__(self, layer_id: int, args: DeepSeekConfig):
         """
         Initializes the Transformer block.
 
@@ -735,8 +828,8 @@ class Block(nn.Module):
         return x
 
 
-class Transformer(PreTrainedModel):
-    config_class = CustomTransformerConfig
+class DeepSeek(PreTrainedModel):
+    config_class = DeepSeekConfig
     """
     Transformer model with positional embeddings, multiple layers, and output projection.
 
@@ -748,26 +841,27 @@ class Transformer(PreTrainedModel):
         head (nn.Module): Output projection layer mapping to vocabulary size.
         freqs_cis (torch.Tensor): Precomputed complex exponential values for rotary embeddings.
     """
-    def __init__(self, args: ModelArgs):
+    def __init__(self, config: DeepSeekConfig):
         """
         Initializes the Transformer model.
 
         Args:
             args (ModelArgs): Model arguments containing transformer parameters.
         """
+        torch.set_default_dtype(torch.bfloat16)
         global world_size, rank
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         rank = dist.get_rank() if dist.is_initialized() else 0
-        Linear.dtype = torch.float8_e4m3fn if args.dtype == "fp8" else torch.bfloat16
-        super().__init__()
-        self.max_seq_len = args.max_seq_len
-        self.embed = ParallelEmbedding(args.vocab_size, args.dim)
+        Linear.dtype = torch.float8_e4m3fn if config.dtype == "fp8" else torch.bfloat16
+        super().__init__(config)
+        self.max_seq_len = config.max_seq_len
+        self.embed = ParallelEmbedding(config.vocab_size, config.dim)
         self.layers = torch.nn.ModuleList()
-        for layer_id in range(args.n_layers):
-            self.layers.append(Block(layer_id, args))
-        self.norm = RMSNorm(args.dim)
-        self.head = ColumnParallelLinear(args.dim, args.vocab_size, dtype=torch.get_default_dtype())
-        self.register_buffer("freqs_cis", precompute_freqs_cis(args), persistent=False)
+        for layer_id in range(config.n_layers):
+            self.layers.append(Block(layer_id, config))
+        self.norm = RMSNorm(config.dim)
+        self.head = ColumnParallelLinear(config.dim, config.vocab_size, dtype=torch.get_default_dtype())
+        self.register_buffer("freqs_cis", precompute_freqs_cis(config), persistent=False)
         self.init_weights()
 
     # def _init_weights(self):
@@ -838,12 +932,15 @@ class Transformer(PreTrainedModel):
 
 if __name__ == "__main__":
     torch.set_default_dtype(torch.bfloat16)
-    torch.set_default_device("cuda")
-    torch.manual_seed(0)
-    args = ModelArgs()
-    x = torch.randint(0, args.vocab_size, (2, 128))
-    model = Transformer(args)
-    print(model(x).size())
+    #torch.set_default_device("cuda")
+    #torch.manual_seed(0)
+    config = DeepSeekConfig()
+    x = torch.randint(0, config.vocab_size, (2, 128))
+    model = DeepSeek(config)
+    pred=model(x)
+    print(pred.size())
+    print(f"{torch.isnan(pred).any()=}")
+
     # Print all layers and parameters
     for name, param in model.named_parameters():
         print(f"Layer: {name} | Size: {param.size()} ")  # Printing first 2 values for brevity
