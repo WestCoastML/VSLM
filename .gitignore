@@ -1,1 +1,3 @@
 .vscode/launch.json
+**pycache**
+gumble_sampling/data
